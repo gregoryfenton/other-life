@@ -17,6 +17,24 @@
 #endif
 
 
+#ifdef ELC
+typedef struct
+{
+	char *name;
+	const char *string;
+} named_string;
+
+typedef struct
+{
+	char *name;
+	size_t num_strings;
+	named_string *strings;
+} string_group;
+
+static string_group* named_strings = NULL;
+static size_t num_named_strings = 0;
+#endif
+
 /*! \name Tooltips*/
 /*! \{ */
 #ifdef ELC
@@ -46,8 +64,10 @@ char	tt_walk[30],
 	newchar_cred_help[100],
 	newchar_done_help[100],
 	tt_name[60],
-	tt_info[30];
-char	tt_emotewin[30];
+	tt_info[30],
+	tt_emotewin[30],
+	tt_rangewin[30],
+	tt_minimap[30];
 
 #endif // ELC
 
@@ -898,6 +918,75 @@ void init_translatables()
 }
 
 #ifdef ELC
+/* Save translated strings with their names for later lookup.
+*/
+void save_named_strings(const group_id *groups, size_t num_groups, const char *group_name)
+{
+	size_t i,j;
+
+	for (j=0; j<num_groups; j++)
+	{
+		if (strcmp(groups[j].xml_id, group_name) == 0)
+		{
+			named_strings = (string_group*)realloc(named_strings, (num_named_strings+1) * sizeof(string_group));
+			named_strings[num_named_strings].name = (char *)malloc(sizeof(char *) * (strlen(group_name) + 1));
+			strcpy(named_strings[num_named_strings].name, group_name);
+
+			named_strings[num_named_strings].num_strings = groups[j].no;
+			named_strings[num_named_strings].strings = (named_string*)malloc(sizeof(named_string) * groups[j].no);
+
+			for (i=0; i<groups[j].no; i++)
+			{
+				named_strings[num_named_strings].strings[i].name = (char *)malloc(sizeof(char *) * (strlen(groups[j].strings[i]->xml_id) + 1));
+				strcpy(named_strings[num_named_strings].strings[i].name, groups[j].strings[i]->xml_id);
+				named_strings[num_named_strings].strings[i].string = groups[j].strings[i]->var;
+			}
+
+			num_named_strings++;
+			return;
+		}
+	}
+}
+#endif
+
+#ifdef ELC
+/* Retrieve a translated string by its name.
+*/
+const char* get_named_string(const char* group_name, const char* string_name)
+{
+	size_t i,j;
+	if ((group_name!=NULL) && (string_name!=NULL))
+		for (j=0; j<num_named_strings; j++)
+			if (strcmp(named_strings[j].name, group_name) == 0)
+				for (i=0; i<named_strings[j].num_strings; i++)
+					if (strcmp(named_strings[j].strings[i].name, string_name) == 0)
+						return named_strings[j].strings[i].string;
+	return "Unknown string";
+}
+#endif
+
+/* Free the memory allocated by translation module
+*/
+void free_translations(void)
+{
+#ifdef ELC
+	/* the named strings */
+	{
+	size_t i,j;
+	for (j=0; j<num_named_strings; j++)
+	{
+		for (i=0; i<named_strings[j].num_strings; i++)
+			free(named_strings[j].strings[i].name);
+		free(named_strings[j].name);
+	}
+	free(named_strings);
+	num_named_strings = 0;
+	named_strings = NULL;
+	}
+#endif
+}
+
+#ifdef ELC
 void init_console()
 {
 	group_id * filter=&(console_str[0]);
@@ -1436,7 +1525,9 @@ void init_help()
 	add_xml_identifier(tooltips,"name_pass",tt_name,"Choose name and password",sizeof(tt_name));
 	add_xml_identifier (tooltips, "info", tt_info, "View notepad/URL window", sizeof (tt_info));
 	add_xml_identifier (tooltips, "emotewin", tt_emotewin, "View Emote window", sizeof (tt_emotewin));
-	
+	add_xml_identifier (tooltips, "range", tt_rangewin, "View Ranging window", sizeof (tt_rangewin));
+	add_xml_identifier (tooltips, "minimap", tt_minimap, "View Minimap window", sizeof (tt_minimap));
+
 	//Buddy list
 	add_xml_identifier(buddy, "name", buddy_name_str, "Name:", sizeof(buddy_name_str));
 	add_xml_identifier(buddy, "name_desc", buddy_long_name_str, "The name of your buddy", sizeof(buddy_long_name_str));
@@ -1503,7 +1594,8 @@ void init_help()
 
 	/* quest_log.cpp */
 	add_xml_identifier(misc, "cm_questlog_menu", cm_questlog_menu_str,
-		"Show all quests & entries\nOpen quest list window\nOpen NPC list window\nSelect NPCs, starting with none...\nShow just this NPC\n--\n"
+		"Show all quests & entries\nOpen quest list window\nOpen NPC list window\n"
+		"Select NPCs, starting with none...\nShow just this NPC\nShow just this quest\n--\n"
 		"Copy entry\nCopy all entries\nFind text...\nAdd entry...\n--\n"
 		"Select entry\nUnselect entry\nSelect all entries\nUnselect all entires\nShow only selected entries\n--\n"
 		"Delete entry\nUndelete entry\n--\n"
@@ -1511,7 +1603,7 @@ void init_help()
 		"Save changes", sizeof(cm_questlog_menu_str));
 	add_xml_identifier(misc, "cm_questlist_menu", cm_questlist_menu_str,
 		"Quest completed\nAdd selected entries to quest\n--\n"
-		"Hide completed quests\nDo not always open window\n", sizeof(cm_questlist_menu_str));
+		"Hide completed quests\nDo not always open window\nStart window left of entires\n", sizeof(cm_questlist_menu_str));
 	add_xml_identifier(misc, "questlog_find_prompt", questlog_find_prompt_str, "Text to Find", sizeof(questlog_find_prompt_str));
 	add_xml_identifier(misc, "questlog_add_npc_prompt", questlog_add_npc_prompt_str, "NPC name", sizeof(questlog_add_npc_prompt_str));	
 	add_xml_identifier(misc, "questlog_add_text_prompt", questlog_add_text_prompt_str, "Entry text", sizeof(questlog_add_text_prompt_str));	
@@ -1778,6 +1870,9 @@ void load_translatables()
 #endif
 		xmlFreeDoc(file.file);
 	}
+#endif
+#ifdef ELC
+	save_named_strings(help_str,HELP_STR, "tooltips");
 #endif
 #ifndef WRITE_XML
 //There's no need for these variables to be hanging around any more...

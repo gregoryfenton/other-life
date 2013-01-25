@@ -205,8 +205,10 @@ extern char 	tt_walk[30],
 		newchar_cred_help[100],
 		newchar_done_help[100],
 		tt_name[60],
-		tt_info[30];
-extern char	tt_emotewin[30];
+		tt_info[30],
+		tt_emotewin[30],
+		tt_rangewin[30],
+		tt_minimap[30];
 
 
 #endif  //DOXYGEN_SKIP_THIS
@@ -890,6 +892,26 @@ void load_translatables();
  * \callgraph
  */
 void add_options_distringid(char * xml_id, dichar * var, char * str, char * desc);
+
+
+/*!
+ * \ingroup	translation
+ *
+ *          Retrieve a translated string by its name.
+ *
+ * \callgraph
+ */
+const char* get_named_string(const char* group_name, const char* string_name);
+
+
+/*!
+ * \ingroup	translation
+ *
+ *          Free allocated memory.
+ *
+ * \callgraph
+ */
+ void free_translations(void);
 
 #ifdef __cplusplus
 } // extern "C"

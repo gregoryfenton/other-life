@@ -24,6 +24,7 @@
 #include "gamewin.h"
 #include "gl_init.h"
 #include "hud.h"
+#include "icon_window.h"
 #include "init.h"
 #include "interface.h"
 #include "io/elpathwrapper.h"
@@ -119,7 +120,7 @@ class Quest_List
 			mouseover_y(-1), clicked(false), spacer(3),
 			linesep(static_cast<int>(SMALL_FONT_Y_LEN)+2*3),
 			font_x(static_cast<int>(SMALL_FONT_X_LEN)), cm_id(CM_INIT_VALUE), 
-			no_auto_open(0), hide_completed(0), quest_completed(0), number_shown(0) {}
+			no_auto_open(0), hide_completed(0), list_left_of_entries(0), quest_completed(0), number_shown(0) {}
 		void add(Uint16 id);
 		void set_requested_title(const char* title);
 		void showall(void);
@@ -137,6 +138,7 @@ class Quest_List
 		void open_window(void);
 		int get_win_id(void) const { return win_id; }
 		int get_scroll_id(void) const  { return scroll_id; }
+		void scroll_to_selected(void);
 		int get_mouseover_y(void) const { return mouseover_y; }
 		void set_mouseover_y(int val) { mouseover_y = val; }
 		bool has_mouseover(void) const { return mouseover_y != -1; }
@@ -177,6 +179,7 @@ class Quest_List
 		// use logical sense so zero/false value is off
 		int no_auto_open;
 		int hide_completed;
+		int list_left_of_entries;
 		int quest_completed;
 		size_t number_shown;
 };
@@ -291,6 +294,7 @@ void Quest_List::load(void)
 	Quest showall(Quest::UNSET_ID);
 	showall.set_title(questlist_showall_str);
 	quests.insert( std::make_pair( Quest::UNSET_ID, showall) );
+	max_title = showall.get_title().size();
 
 	std::string username = std::string(username_str);
 	std::transform(username.begin(), username.end(), username.begin(), tolower);
@@ -419,6 +423,7 @@ unsigned int Quest_List::get_options(void) const
 	unsigned int options = 0;
 	options |= (no_auto_open) ?1: 0;
 	options |= ((hide_completed) ?1: 0) << 1;
+	options |= ((list_left_of_entries) ?1: 0) << 2;
 	return options;
 }
 
@@ -429,6 +434,7 @@ void Quest_List::set_options(unsigned int options)
 {
 	no_auto_open = options & 1;
 	hide_completed = (options >> 1) & 1;
+	list_left_of_entries = (options >> 2) & 1;
 }
 
 
@@ -530,11 +536,12 @@ static const int qlwinheight = 350;
 static const int qlborder = 5;
 static size_t cm_questlog_id = CM_INIT_VALUE;
 static size_t cm_questlog_over_entry = static_cast<size_t>(-1);
-enum {	CMQL_SHOWALL=0, CMQL_QUESTFILTER, CMQL_NPCFILTER, CMQL_NPCSHOWNONE, CMQL_JUSTTHISNPC, CMQL_S01,
+enum {	CMQL_SHOWALL=0, CMQL_QUESTFILTER, CMQL_NPCFILTER, CMQL_NPCSHOWNONE,
+		CMQL_JUSTTHISNPC, CMQL_JUSTTHISQUEST, CMQL_S01,
 		CMQL_COPY, CMQL_COPYALL, CMQL_FIND, CMQL_ADD, CMQL_S02,
 		CMQL_SEL, CMQL_UNSEL, CMQL_SELALL, CMQL_UNSELALL, CMQL_SHOWSEL, CMQL_S03,
 		CMQL_DELETE, CMQL_UNDEL, CMQL_S04, CMQL_DEDUPE, CMQL_S05, CMQL_SAVE };
-enum {	CMQL_COMPLETED=0, CMQL_ADDSEL, CMQL_S11, CMQL_HIDECOMPLETED, CMQL_NOAUTOOPEN };
+enum {	CMQL_COMPLETED=0, CMQL_ADDSEL, CMQL_S11, CMQL_HIDECOMPLETED, CMQL_NOAUTOOPEN,  CMQL_LISTLEFTOFENTRIES };
 static std::string adding_npc;
 static size_t adding_insert_pos = 0;
 static bool prompt_for_add_text = false;
@@ -608,6 +615,10 @@ void Quest_Entry::set_lines(const std::string & the_text)
 			text += last_char = the_text[i];
 	}
 
+	// strip any line breaks from the end of the line
+	while (!text.empty() && (*(text.end()-1) == '\r'))
+		text.erase(text.end()-1, text.end());
+
 	// look for and <<number>> at the end of the text, its the quest id
 	std::string::size_type close = text.rfind(">>");
 	if (close == text.size()-2)
@@ -639,8 +650,16 @@ void Quest_Entry::set_lines(const std::string & the_text)
 			last_space = i;
 		if (col >= chars_per_line)
 		{
-			lines.push_back(text.substr(start, last_space-start));
-			start = last_space+1;
+			if (last_space<=start)
+			{
+				lines.push_back(text.substr(start, chars_per_line));
+				start += chars_per_line;
+			}
+			else
+			{
+				lines.push_back(text.substr(start, last_space-start));
+				start = last_space+1;
+			}
 			col = i - start;
 		}
 		col++;
@@ -1212,6 +1231,26 @@ static void cm_questlist_pre_show_handler(window_info *win, int widget_id, int m
 }
 
 
+//	Scroll to show the currently selected quest in the quest list window.
+//
+void Quest_List::scroll_to_selected(void)
+{
+	Uint16 setected_id = questlist.get_selected();
+	if (setected_id == Quest::UNSET_ID)
+		return;
+	const Quest* thequest = questlist.get_first_quest(0);
+	for (int line_num = 0; thequest != 0; line_num++)
+	{
+		if (thequest->get_id() == setected_id)
+		{
+			vscrollbar_set_pos(questlist.get_win_id(), questlist.get_scroll_id(), line_num);
+			break;
+		}
+		thequest = questlist.get_next_quest();
+	}
+}
+
+
 //	Create or open the quest list window.
 //
 void Quest_List::open_window(void)
@@ -1219,9 +1258,23 @@ void Quest_List::open_window(void)
 	if (win_id < 0)
 	{
 		window_info *win = &windows_list.window[questlog_win];
-		const int size_x = font_x*40+ELW_BOX_SIZE+4*spacer;
-		const int size_y = 5*linesep;
-		win_id = create_window(questlist_filter_title_str, questlog_win, 0, (win->len_x-size_x)/2, static_cast<int>(win->len_y+SMALL_FONT_Y_LEN+10+ELW_TITLE_HEIGHT), size_x, size_y, ELW_WIN_DEFAULT|ELW_RESIZEABLE);
+		const int min_size_x = font_x*15+ELW_BOX_SIZE+4*spacer;
+		const int min_size_y = 5*linesep;
+		const int size_x = font_x*get_max_title()+ELW_BOX_SIZE+4*spacer;
+		int size_y, pos_x, pos_y;
+		if (list_left_of_entries)
+		{
+			pos_x = -(size_x + 10);
+			pos_y = 0; 
+			size_y = linesep * static_cast<int>(win->len_y / linesep);
+		}
+		else
+		{
+			pos_x = (win->len_x-size_x)/2;
+			pos_y = static_cast<int>(win->len_y+SMALL_FONT_Y_LEN+10+ELW_TITLE_HEIGHT);
+			size_y = min_size_y;
+		}
+		win_id = create_window(questlist_filter_title_str, questlog_win, 0, pos_x, pos_y, size_x, size_y, ELW_WIN_DEFAULT|ELW_RESIZEABLE);
 		set_window_handler(win_id, ELW_HANDLER_DISPLAY, (int (*)())&display_questlist_handler );
 		set_window_handler(win_id, ELW_HANDLER_CLICK, (int (*)())&click_questlist_handler );
 		set_window_handler(win_id, ELW_HANDLER_MOUSEOVER, (int (*)())&mouseover_questlist_handler );
@@ -1229,7 +1282,7 @@ void Quest_List::open_window(void)
 		scroll_id = vscrollbar_add_extended(win_id, scroll_id, NULL, 
 			size_x-ELW_BOX_SIZE, ELW_BOX_SIZE, ELW_BOX_SIZE, size_y-2*ELW_BOX_SIZE, 0,
 			1.0, newcol_r, newcol_g, newcol_b, 0, 1, quests.size()-1);
-		set_window_min_size(win_id, size_x, size_y);
+		set_window_min_size(win_id, min_size_x, min_size_y);
 
 		cm_id = cm_create(cm_questlist_menu_str, cm_questlist_handler);
 		cm_set_pre_show_handler(cm_id, cm_questlist_pre_show_handler);
@@ -1238,6 +1291,7 @@ void Quest_List::open_window(void)
 		cm_bool_line(cm_id, CMQL_COMPLETED, &quest_completed, NULL);
 		cm_bool_line(cm_id, CMQL_NOAUTOOPEN, &no_auto_open, NULL);
 		cm_bool_line(cm_id, CMQL_HIDECOMPLETED, &hide_completed, NULL);
+		cm_bool_line(cm_id, CMQL_LISTLEFTOFENTRIES, &list_left_of_entries, NULL);
 	}
 	else
 		show_window(win_id);
@@ -1327,7 +1381,7 @@ static void questlog_add_text_input(window_info *win)
 {
 	prompt_for_add_text = false;
 	close_ipu(&ipu_questlog);
-	init_ipu(&ipu_questlog, questlog_win, 400, -1, 256, 5, questlog_input_cancel_handler, questlog_add_text_input_handler);
+	init_ipu(&ipu_questlog, questlog_win, 400, -1, 1024, 5, questlog_input_cancel_handler, questlog_add_text_input_handler);
 	ipu_questlog.x = (win->len_x - ipu_questlog.popup_x_len) / 2;
 	ipu_questlog.y = (win->len_y - ipu_questlog.popup_y_len) / 2;
 	ipu_questlog.allow_nonprint_chars = 1;
@@ -1471,6 +1525,7 @@ static void cm_questlog_pre_show_handler(window_info *win, int widget_id, int mx
 	cm_grey_line(cm_questlog_id, CMQL_NPCFILTER, (nfw_open || quest_entries.empty()) ?1 :0);
 	cm_grey_line(cm_questlog_id, CMQL_NPCSHOWNONE, (quest_entries.empty()) ?1 :0);
 	cm_grey_line(cm_questlog_id, CMQL_JUSTTHISNPC, (is_over_entry) ?0 :1);
+	cm_grey_line(cm_questlog_id, CMQL_JUSTTHISQUEST, (is_over_entry && (quest_entries[active_entries[cm_questlog_over_entry]].get_id() != Quest::UNSET_ID)) ?0 :1);
 	cm_grey_line(cm_questlog_id, CMQL_COPY, (is_over_entry && !is_deleted) ?0 :1);
 	cm_grey_line(cm_questlog_id, CMQL_COPYALL, active_entries.empty() ?1 :0);
 	cm_grey_line(cm_questlog_id, CMQL_FIND, (current_action == -1 && !active_entries.empty()) ?0 :1);
@@ -1503,6 +1558,19 @@ static int cm_quest_handler(window_info *win, int widget_id, int mx, int my, int
 		case CMQL_SHOWALL: show_all_entries(); break;
 		case CMQL_QUESTFILTER: questlist.open_window(); break;
 		case CMQL_NPCFILTER: open_filter_window(); break;
+		case CMQL_JUSTTHISQUEST:
+			if (over_entry < active_entries.size())
+			{
+				Uint16 the_id = quest_entries[active_entries[over_entry]].get_id();
+				if (the_id != Quest::UNSET_ID)
+				{
+					active_filter = QLFLT_QUEST;
+					questlist.set_selected(the_id);
+					rebuild_active_entries(quest_entries.size()-1);
+					questlist.scroll_to_selected();
+				}
+			}
+			break;
 		case CMQL_JUSTTHISNPC:
 		case CMQL_NPCSHOWNONE:
 			questlist.set_selected(Quest::UNSET_ID);
