@@ -40,6 +40,7 @@
 #include "spells.h"
 #include "storage.h"
 #include "trade.h"
+#include "trade_log.h"
 #include "translate.h"
 #include "update.h"
 #include "weather.h"
@@ -919,6 +920,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				inventory_item_string[0]=0;
 				inventory_item_string_id=0;
 				get_your_items(in_data+3);
+				trade_post_inventory();
 			}
 			break;
 
@@ -1229,6 +1231,10 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 			   
 		   
 				weather_set_area(0, tile_map_size_x*1.5, tile_map_size_y*1.5, 100000.0, 1, severity, in_data[3]);
+				if (show_weather)
+				{
+					weather_set_area(0, tile_map_size_x*1.5, tile_map_size_y*1.5, 100000.0, 1, severity, in_data[3]);
+				}
 			}
 			break;
 
@@ -1257,9 +1263,12 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 					LOG_WARNING("CAUTION: Possibly forged THUNDER packet received.\n");
 					break;
 				}
-				weather_add_lightning(rand()%5,
-                                      -camera_x + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0),
-                                      -camera_y + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0));
+				if (show_weather)
+				{
+					weather_add_lightning(rand()%5,
+                                      		-camera_x + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0),
+                                      		-camera_y + (50.0 + rand()%101)*(rand()%2 ? 1.0 : -1.0));
+				}
 			}
 			break;
 
@@ -1536,6 +1545,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 		case GET_TRADE_EXIT:
 			{
 				hide_window(trade_win);
+				trade_exit();
 			}
 			break;
 
@@ -1857,6 +1867,7 @@ void process_message_from_server (const Uint8 *in_data, int data_length)
 				  break;
 				}
 				get_storage_items(in_data+3, data_length-3);
+				trade_post_storage();
 			}
 			break;
 

@@ -39,6 +39,7 @@
 #include "init.h"
 #include "io/elpathwrapper.h"
 #include "items.h"
+#include "item_info.h"
 #include "item_lists.h"
 #include "questlog.h"
 #include "sound.h"
@@ -197,7 +198,7 @@ namespace ItemLists
 				name_under_mouse(static_cast<size_t>(-1)), clicked(false),
 				mouse_over_add_button(false), last_click_time(0), resizing(false),
 				last_quantity_selected(0), num_grid_rows(min_grid_rows()),
-				last_key_time(0), last_items_list_on_left(-1) {}
+				last_key_time(0), last_items_list_on_left(-1), desc_str(0) {}
 			int get_id(void) const { return win_id; }
 			size_t get_grid_cm(void) const { return cm_selected_item_menu; }
 			static int get_grid_size(void) { return 33; };
@@ -244,6 +245,7 @@ namespace ItemLists
 			char filter[20];
 			Uint32 last_key_time;
 			int last_items_list_on_left;
+			const char *desc_str;
 	};
 
 
@@ -923,6 +925,12 @@ namespace ItemLists
 
 		size_t help_lines_shown = 0;
 
+		if (desc_str)
+		{
+			show_help(desc_str, 0, static_cast<int>(0.5 + win->len_y + 10 + SMALL_FONT_Y_LEN * help_lines_shown++));
+			desc_str = 0;
+		}
+
 		// Display any name search text
 		if (strlen(filter))
 		{
@@ -1069,6 +1077,10 @@ CHECK_GL_ERRORS();
 			size_t item_number = get_item_number(mx, my);
 			if (item_number < Vars::lists()->get_list().get_num_items())
 			{
+				Uint16 item_id = Vars::lists()->get_list().get_item_id(item_number);
+				int image_id = Vars::lists()->get_list().get_image_id(item_number);
+				if (show_item_desc_text && item_info_available() && (get_item_count(item_id, image_id) == 1))
+					desc_str = get_item_description(item_id, image_id);
 				help_str.push_back(item_list_pickup_help_str);
 				help_str.push_back(item_list_use_help_str);
 				help_str.push_back(item_list_edit_help_str);
